@@ -1,57 +1,96 @@
 import subprocess as sp
 import time
-import streamlit as st
-from datetime import datetime
-from collections import deque
+from datetime import datetime, timedelta
 
-RSSI_THRESHOLD = 5  # dBm
-MONITOR_INTERVAL = 5  # segundos
-INTERFACE = 'Wi-Fi'
+RSSI_THRESHOLD = 5
+MONITOR_INTERVAL = 2
+MONITOR_DURATION = 10
 
+def get_rssi():
+    try:
+        result_cmd = sp.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True, timeout=2)
+        output = result_cmd.stdout
 
+        result = {'rssi': None, 'banda': None,'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
-# def get_rssi(INTERFACE):
+        for line in output.splitlines():
+            line = line.strip()
 
+            if 'rssi' in line.lower() and ':' in line:
+                    rssi_str = line.split(':')[1].strip()
+                    result['rssi'] = int(rssi_str)
 
-def dashboard():
-    st.set_page_config(page_title="Detector de Fading de RSSI", layout="wide")
-    st.title("Detector de Eventos de Fading de RSSI")
-    st.write("O R-D+AI monitora o seu sinal Wi-Fi, detecta eventos de fading no período de 2 minutos e apresenta um diagnóstico do evento que você escolher.")
+            elif 'banda' in line.lower() and ':' in line:
+                    banda_str = line.split(':')[1].strip()
+                    result['banda'] = banda_str
+
+        return result
     
-    if 'monitoring' not in st.session_state:
-        st.session_state.monitoring = False
-        st.session_state.data = deque(maxlen=100)
-        st.session_state.fading_events = []
-        st.session_state.stop_event = None
-        st.session_state.monitor_thread = None
+    except sp.TimeoutExpired:
+        print("Timeout ao executar comando netsh")
+        return None
 
-    col1, col2, col3 = st.columns([1, 2, 2])
+def monitor_rssi(duration=MONITOR_DURATION, interval=MONITOR_INTERVAL):
+
+    start_time = datetime.now()
+    end_time = start_time + timedelta(seconds=duration)
     
-    with col1:
-        if st.button("Iniciar Monitoramento" if not st.session_state.monitoring else "Parar Monitoramento"):
-            if not st.session_state.monitoring:
+    rssi_history = []
+    fading_events = []
+    previous_rssi = None
+    collect_nb = 0
+    
+    while datetime.now() < end_time:
+        collect_nb += 1
+        timer = (datetime.now() - start_time).total_seconds()
+        time_limit = duration - timer
 
-                st.success("Monitoramento iniciado!")
+        data = get_rssi()
+
+        if data['rssi'] is not None:
+            current_rssi = data['rssi']
+
+            rssi_history.append(data)
+            if previous_rssi is not None:
+                fading_test_detection = current_rssi - previous_rssi
+
+                if abs(fading_test_detection) >= RSSI_THRESHOLD:
+                    fading_event = {
+                        'Data e hora do evento': data['timestamp'],
+                        'RSSI anterior': previous_rssi,
+                        'RSSI atual': current_rssi,
+                        'Diferença de Sinal': fading_test_detection,
+                        'Tipo': 'queda' if fading_test_detection < 0 else 'aumento'
+                    }
+
+                    fading_events.append(fading_event)
+                    
+                    print(f"⚠️  [ #{collect_nb}] Evento de fading identificado")
+                    print(f"    {previous_rssi} dBm → {current_rssi} dBm ({fading_test_detection:+d} dBm)")
+                else:
+                    print(f"✅ [ #{collect_nb}] RSSI: {current_rssi} dBm (RSSI estável)")
             else:
-                if st.session_state.stop_event:
-                    st.session_state.stop_event.set()
-                st.session_state.monitoring = False
-                st.info("Monitoramento interrompido.")
+                print(f"✅ [#{collect_nb}] RSSI inicial: {current_rssi} dBm")
+            
+            previous_rssi = current_rssi
+        else:
+            print(f"❌ [ #{collect_nb}] Erro ao coletar dados. Tente novamente")
+        
+        print(f"⏱️  Tempo restante: {time_limit:.0f}s\n")
+        
+        if datetime.now() < end_time:
+            time.sleep(interval)
     
-    with col2:
-        if st.button("Limpar Dados"):
-            st.session_state.data.clear()
-            st.session_state.fading_events.clear()
-            st.success("Dados limpos!")
-    
-    with col3:
-        st.metric("Status", "🟢 Monitorando" if st.session_state.monitoring else "🔴 Parado")
+    final_result = {
+        'Tempo de monitoramento': duration,
+        'Coletas bem sucedidas': len(rssi_history),
+        'Nº de eventos de fading': len(fading_events),        
+        'Eventos de Fading': fading_events,
+        'Histórico de coletas': rssi_history
+    }
 
-    if st.session_state.monitoring:
-        time.sleep(1)
-        st.rerun()
-
-# def llm_integration(fading_events):
+    return final_result
 
 if __name__ == "__main__":
-    dashboard()
+    resultado = monitor_rssi()
+    print("Relatório Final:", resultado)
