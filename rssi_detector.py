@@ -1,15 +1,20 @@
 import subprocess as sp
+import os
 import time
 from datetime import datetime, timedelta
 
-RSSI_THRESHOLD = 5
+RSSI_THRESHOLD = 1
 MONITOR_INTERVAL = 2
 MONITOR_DURATION = 10
 
 def get_rssi():
     try:
-        result_cmd = sp.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True, timeout=2)
-        output = result_cmd.stdout
+        if os.name == 'nt':
+            result_cmd = sp.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True, timeout=2)
+        elif os.name == 'posix':
+            result_cmd = sp.run(['iwconfig'], capture_output=True, text=True, timeout=2)
+
+        output = result_cmd.stdout  
 
         result = {'rssi': None, 'banda': None,'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
@@ -26,8 +31,8 @@ def get_rssi():
 
         return result
     
-    except sp.TimeoutExpired:
-        print("Timeout ao executar comando netsh")
+    except Exception as e:
+        print(f"Erro inesperado: {e}")
         return None
 
 def monitor_rssi(duration=MONITOR_DURATION, interval=MONITOR_INTERVAL):
