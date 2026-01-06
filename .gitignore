@@ -1,1 +1,6 @@
 rssi_detector_plus.py
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc

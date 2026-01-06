@@ -13,26 +13,39 @@ MONITOR_DURATION = 120
 
 def get_rssi():
     try:
-        if os.name == 'nt':
+        if os.name == 'nt': # Windows
             result_cmd = sp.run(['netsh', 'wlan', 'show', 'interfaces'], capture_output=True, text=True, timeout=2)
-        elif os.name == 'posix':
+            output = result_cmd.stdout
+        else: # Linux / POSIX
+            # Tentamos o iwconfig primeiro
             result_cmd = sp.run(['iwconfig'], capture_output=True, text=True, timeout=2)
+            output = result_cmd.stdout
 
-        output = result_cmd.stdout  
-        result = {'rssi': None, 'banda': None,'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        result = {'rssi': None, 'banda': None, 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
         for line in output.splitlines():
-            line = line.strip()
-            if 'rssi' in line.lower() and ':' in line:
-                rssi_str = line.split(':')[1].strip()
-                result['rssi'] = int(rssi_str)
-            elif 'banda' in line.lower() and ':' in line:
-                banda_str = line.split(':')[1].strip()
-                result['banda'] = banda_str
+            line_lower = line.lower()
+            
+            # Lógica para Windows
+            if os.name == 'nt':
+                if 'rssi' in line_lower and ':' in line:
+                    result['rssi'] = int(line.split(':')[1].replace('%', '').strip())
+            
+            # Lógica para Linux (iwconfig)
+            else:
+                if 'signal level' in line_lower:
+                    # O iwconfig retorna algo como: Signal level=-35 dBm
+                    partes = line.split('Signal level=')[1].split()
+                    valor_rssi = partes[0].replace('dBm', '')
+                    result['rssi'] = int(valor_rssi)
+                
+                if 'frequency' in line_lower:
+                    # Tenta pegar a frequência/banda
+                    result['banda'] = line.split('Frequency:')[1].split()[0]
 
         return result
     except Exception as e:
-        print(f"Erro: {e}")
+        print(f"Erro detalhado: {e}")
         return None
 
 def monitor_rssi(duration=MONITOR_DURATION, interval=MONITOR_INTERVAL, rssi_range=RSSI_RANGE):
