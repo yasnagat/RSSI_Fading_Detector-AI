@@ -5,9 +5,13 @@ import os
 import time
 from datetime import datetime, timedelta
 import pandas as pd
+import openai
 import plotly.graph_objects as go
 
-RSSI_RANGE = 10
+
+IA_BASE_URL = "https://api.groq.com/openai/v1"
+IA_MODEL = "llama-3.3-70b-versatile"
+RSSI_RANGE = 1
 MONITOR_INTERVAL = 2
 MONITOR_DURATION = 120
 
@@ -222,73 +226,55 @@ def bars(fading_events):
     
     return graph
 
-def ia_prompt(fading_event, rssi_history, api_key):
+def ia_prompt(fading_event, rssi_history, user_api_key):
     try:
         from openai import OpenAI
         
-        client = OpenAI(
-        api_key="gsk_qQRZgR0S4WcDHrx6PQdWWGdyb3FY5AU6x7QzE1V09W0yXxi6U6aSOQ",
-        base_url="https://api.groq.com/openai/v1")
+        # Agora usamos a chave que veio do input do usuário
+        client = OpenAI(api_key=user_api_key, base_url=IA_BASE_URL)
 
         rssi_medio = sum(h['rssi'] for h in rssi_history) / len(rssi_history)
-        rssi_min = min(h['rssi'] for h in rssi_history)
-        rssi_max = max(h['rssi'] for h in rssi_history)
         
         prompt = f"""
-Analise este evento de fading em rede Wi-Fi e forneca possiveis causas:
-
-Detalhes do Evento:
-Data e Hora: {fading_event['Data e hora do evento']}
-RSSI Anterior: {fading_event['RSSI anterior']} dBm
-RSSI Atual: {fading_event['RSSI atual']} dBm
-Variacao: {fading_event['Diferenca de Sinal']} dBm
-Tipo: {fading_event['Tipo']}
-
-Contexto:
-Total de coletas: {len(rssi_history)}
-RSSI medio: {rssi_medio:.1f} dBm
-RSSI minimo: {rssi_min} dBm
-RSSI maximo: {rssi_max} dBm
-"""
+        Analise tecnicamente este evento de fading Wi-Fi:
+        Evento: {fading_event['Tipo']} de {fading_event['Diferenca de Sinal']} dBm.
+        Contexto do sinal: Média de {rssi_medio:.1f} dBm.
+        Forneça causas possíveis baseadas nestes dados.
+        """
         
         response = client.chat.completions.create(
-            model="deepseek-chat",
-            max_tokens=1000,
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
+            model=IA_MODEL,
+            messages=[{"role": "user", "content": prompt}],
             stream=False
         )
 
         return response.choices[0].message.content     
-        
     except Exception as e:
-        return f"Erro ao analisar: {str(e)}"
+        return f"Erro na análise: {str(e)}"
 
 def ia_section(fading_events, rssi_history):
     st.markdown("---")
-    st.subheader("Execute uma consulta com IA")
+    st.subheader("Análise com Inteligência Artificial")
     
     if not fading_events:
-        st.info("Nenhum evento detectado. Execute o monitoramento primeiro.")
+        st.info("Aguardando detecção de eventos para análise.")
         return
-    
-    if 'api_key' not in st.session_state:
-        st.session_state.api_key = ""
-    
-    api_key = st.text_input(
-        "Chave da API da LLM",
+
+    if 'user_api_key' not in st.session_state:
+        st.session_state.user_api_key = ""
+
+    api_key_input = st.text_input(
+        "Insira sua API Key (Groq/OpenAI):",
         type="password",
-        value=st.session_state.api_key
+        value=st.session_state.user_api_key,
+        help="Sua chave não será salva no código, apenas na memória."
     )
     
-    if api_key:
-        st.session_state.api_key = api_key
-    
-    event_options = []
-    for i, event in enumerate(fading_events):
-        texto = f"Evento {i+1} - {event['Data e hora do evento']} | {event['Tipo'].upper()} de {abs(event['Diferenca de Sinal'])} dBm"
-        event_options.append(texto)
+    if api_key_input:
+        st.session_state.user_api_key = api_key_input
+
+    event_options = [f"Evento {i+1} - {e['Tipo'].upper()} ({e['Diferenca de Sinal']} dBm)" 
+                     for i, e in enumerate(fading_events)]
     
     selected_index = st.selectbox(
         "Escolha um evento para avaliar:",
@@ -298,34 +284,26 @@ def ia_section(fading_events, rssi_history):
     
     selected_event = fading_events[selected_index]
     
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Horario", selected_event['Data e hora do evento'].split()[1])
-    with col2:
-        st.metric("RSSI Anterior", f"{selected_event['RSSI anterior']} dBm")
-    with col3:
-        st.metric("RSSI Atual", f"{selected_event['RSSI atual']} dBm")
-    with col4:
-        st.metric("Variacao", f"{selected_event['Diferenca de Sinal']:+d} dBm")
-    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Anterior", f"{selected_event['RSSI anterior']} dBm")
+    col2.metric("Atual", f"{selected_event['RSSI atual']} dBm")
+    col3.metric("Variação", f"{selected_event['Diferenca de Sinal']:+d} dBm")
+
     if st.button("Analisar com IA", type="primary", use_container_width=True):
-        if not api_key:
-            st.error("Insira sua chave da API")
+        if not st.session_state.user_api_key:
+            st.error("Por favor, insira uma API Key válida acima.")
         else:
-            with st.spinner("Analisando..."):
-                analise = ia_prompt(selected_event, rssi_history, api_key)
+            with st.spinner("IA processando dados de rede..."):
+                # Passamos a chave digitada para a função
+                analise = ia_prompt(selected_event, rssi_history, st.session_state.user_api_key)
                 
                 if 'analyses' not in st.session_state:
                     st.session_state.analyses = {}
                 st.session_state.analyses[selected_index] = analise
     
     if 'analyses' in st.session_state and selected_index in st.session_state.analyses:
-        st.markdown("### Conclusao")
-        st.markdown(st.session_state.analyses[selected_index])
-        
-        if st.button("Apagar resposta"):
-            del st.session_state.analyses[selected_index]
-            st.rerun()
+        st.markdown("### Conclusão")
+        st.info(st.session_state.analyses[selected_index])
 
 def dashboard():
     st.set_page_config(page_title="R-D+IA", layout="wide")
