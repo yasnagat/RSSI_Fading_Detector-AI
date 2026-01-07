@@ -226,7 +226,9 @@ def ia_prompt(fading_event, rssi_history, api_key):
     try:
         from openai import OpenAI
         
-        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        client = OpenAI(
+        api_key="gsk_qQRZgR0S4WcDHrx6PQdWWGdyb3FY5AU6x7QzE1V09W0yXxi6U6aSOQ",
+        base_url="https://api.groq.com/openai/v1")
 
         rssi_medio = sum(h['rssi'] for h in rssi_history) / len(rssi_history)
         rssi_min = min(h['rssi'] for h in rssi_history)
