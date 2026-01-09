@@ -7,3 +7,4 @@ Software de medição de indicador de força de sinal recebido (Received Signal 
 # Definição de evento de fading
 
 # Referências
+=======
