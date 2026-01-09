@@ -16,10 +16,10 @@ Fading Positivo (Aumento): Quando o sinal ganha intensidade rapidamente.
 
 Fading Negativo (Queda): Quando o sinal sofre uma perda brusca de potência, geralmente causada por obstáculos físicos ou interferência de múltiplos caminhos.
 
-Instalação e Requisitos
+# Instalação e Requisitos
 Para garantir que todas as dependências do software funcionem corretamente, utilize o arquivo requirements.txt.
 
-Como usar o requirements.txt:
+#### Como usar o requirements.txt:
 1. Crie um ambiente virtual:<br/>python3 -m venv venv <br/>
 source venv/bin/activate
 
